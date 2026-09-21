@@ -1,2 +1,5 @@
 JSyphon/native_src/JSyphon.xcodeproj/project.xcworkspace/xcuserdata
 JSyphon/native_src/JSyphon.xcodeproj/xcuserdata
+JSyphon/native_src/build_universal
+JSyphon/native_src/tests/vao_test
+JSyphon/native_src/tests/Syphon

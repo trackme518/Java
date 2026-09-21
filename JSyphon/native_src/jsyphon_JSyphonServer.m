@@ -1,6 +1,5 @@
-#import <JavaVM/JavaVM.h>
-#import <JavaNativeFoundation/JavaNativeFoundation.h>	// JNI Cocoa helper 
-#import <JavaVM/jni.h>
+#import <jni.h>
+#import <JavaNativeFoundation/JavaNativeFoundation.h>	// JNI Cocoa helper
 
 #import <Cocoa/Cocoa.h>
 #import <OpenGL/OpenGL.h>

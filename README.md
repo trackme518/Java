@@ -60,6 +60,16 @@ xcodebuild -scheme libJSyphon archive -project native_src/JSyphon.xcodeproj
 
 The build step (either from the IDE or the command line) will generate two files: the Syphon framework binary, named simply "Syphon", and the JSyphon JNI library, named "libJSyphon.jnilib". They will be placed inside the "native_libs" folder, where you can then load it in Java using System.load or System.loadLibrary depending on your path setups. We suggest System.loadLibrary.
 
+* Universal (Apple Silicon) build without Xcode: the Xcode project above links
+  against Apple's JavaNativeFoundation and JavaVM frameworks, which are no
+  longer available in current macOS SDKs. Run the script
+  `JSyphon/native_src/build_universal.sh` instead (requires only the Command
+  Line Tools and a JDK for the JNI headers, set `JAVA_HOME` if needed). It
+  compiles the Syphon framework and the JNI library from the submodules for
+  both x86_64 and arm64, statically links the JavaNativeFoundation sources
+  vendored under `JSyphon/native_src/jnf` (from apple/openjdk, APSL 2.0),
+  ad-hoc code signs the results and installs them in `native_libs`.
+
 * To experiment with the JSyphon examples, we provide an Eclipse project which you can import into your workspace, and experiment with "ServerTest.java" and "ClientTest.java". 
 
 Acknowledgments
