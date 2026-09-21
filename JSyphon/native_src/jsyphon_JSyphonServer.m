@@ -3,9 +3,104 @@
 
 #import <Cocoa/Cocoa.h>
 #import <OpenGL/OpenGL.h>
+#import <OpenGL/gl.h>
+#import <OpenGL/glext.h>
 #import <Syphon/Syphon.h>
 
 #import <OpenGL/CGLMacro.h>
+
+#ifndef GL_TEXTURE_BINDING_RECTANGLE
+#define GL_TEXTURE_BINDING_RECTANGLE 0x84F6
+#endif
+#ifndef GL_TEXTURE_RECTANGLE
+#define GL_TEXTURE_RECTANGLE 0x84F5
+#endif
+#ifndef GL_VERTEX_ARRAY_BINDING
+#define GL_VERTEX_ARRAY_BINDING 0x85B5
+#endif
+#ifndef GL_VERSION_3_0
+extern void glBindVertexArray(GLuint array);
+#endif
+
+// The Syphon server draws through its own (share-group) context. On Apple's
+// GL-over-Metal implementation some per-context state is shared between
+// contexts in a share group, so the publish can clobber state the calling
+// (Processing) context relies on. Capture the state Syphon may touch and put
+// it back after each call that draws.
+#define JSYPHON_TEXTURE_UNITS 4
+
+typedef struct {
+    GLint activeTexture;
+    GLint texture2D[JSYPHON_TEXTURE_UNITS];
+    GLint textureRectangle[JSYPHON_TEXTURE_UNITS];
+    GLint vertexArray;
+    GLint renderBuffer;
+    GLint readFramebuffer;
+    GLint drawFramebuffer;
+    GLint arrayBuffer;
+    GLint elementArrayBuffer;
+    GLint viewport[4];
+    GLint scissorBox[4];
+    GLboolean scissorTest;
+    GLboolean blend;
+    GLint program;
+} JNSyphonGLState;
+
+static void jsyphon_gl_state_save(JNSyphonGLState *state)
+{
+    CGLContextObj cgl_ctx = CGLGetCurrentContext();
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &state->activeTexture);
+    for (GLint unit = 0; unit < JSYPHON_TEXTURE_UNITS; unit++) {
+        glActiveTexture(GL_TEXTURE0 + unit);
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &state->texture2D[unit]);
+        glGetIntegerv(GL_TEXTURE_BINDING_RECTANGLE, &state->textureRectangle[unit]);
+    }
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &state->vertexArray);
+    glGetIntegerv(GL_RENDERBUFFER_BINDING, &state->renderBuffer);
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &state->readFramebuffer);
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &state->drawFramebuffer);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &state->arrayBuffer);
+    glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &state->elementArrayBuffer);
+    glGetIntegerv(GL_VIEWPORT, state->viewport);
+    glGetIntegerv(GL_SCISSOR_BOX, state->scissorBox);
+    glGetBooleanv(GL_SCISSOR_TEST, &state->scissorTest);
+    glGetBooleanv(GL_BLEND, &state->blend);
+    glGetIntegerv(GL_CURRENT_PROGRAM, &state->program);
+}
+
+static void jsyphon_gl_state_restore(JNSyphonGLState *state)
+{
+    CGLContextObj cgl_ctx = CGLGetCurrentContext();
+    glUseProgram(state->program);
+    glViewport(state->viewport[0], state->viewport[1], state->viewport[2], state->viewport[3]);
+    glScissor(state->scissorBox[0], state->scissorBox[1], state->scissorBox[2], state->scissorBox[3]);
+    if (state->scissorTest) {
+        glEnable(GL_SCISSOR_TEST);
+    } else {
+        glDisable(GL_SCISSOR_TEST);
+    }
+    if (state->blend) {
+        glEnable(GL_BLEND);
+    } else {
+        glDisable(GL_BLEND);
+    }
+    glBindRenderbuffer(GL_RENDERBUFFER, state->renderBuffer);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, state->readFramebuffer);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, state->drawFramebuffer);
+    // Rebind the VAO before the buffer bindings: element array binding lives in the VAO
+    glBindVertexArray(state->vertexArray);
+    glBindBuffer(GL_ARRAY_BUFFER, state->arrayBuffer);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, state->elementArrayBuffer);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, state->texture2D[0]);
+    glBindTexture(GL_TEXTURE_RECTANGLE, state->textureRectangle[0]);
+    for (GLint unit = 1; unit < JSYPHON_TEXTURE_UNITS; unit++) {
+        glActiveTexture(GL_TEXTURE0 + unit);
+        glBindTexture(GL_TEXTURE_2D, state->texture2D[unit]);
+        glBindTexture(GL_TEXTURE_RECTANGLE, state->textureRectangle[unit]);
+    }
+    glActiveTexture(state->activeTexture);
+}
 
 JNIEXPORT jlong JNICALL Java_jsyphon_JSyphonServer_initWithName (JNIEnv * env, jobject jobj, jstring name, jobject options)
 {
@@ -74,8 +169,12 @@ JNIEXPORT void JNICALL Java_jsyphon_JSyphonServer_publishFrameTexture(JNIEnv * e
 	GLuint textureID = texID ;
 	GLuint textureTarget = texTarget;
     SyphonServer* server = jlong_to_ptr(ptr);
+
+    JNSyphonGLState state;
+    jsyphon_gl_state_save(&state);
     [server publishFrameTexture:textureID textureTarget:textureTarget imageRegion:rect textureDimensions:size flipped:(isFlipped == JNI_TRUE)];
-    
+    jsyphon_gl_state_restore(&state);
+
 	JNF_COCOA_EXIT(env);
 }
 
